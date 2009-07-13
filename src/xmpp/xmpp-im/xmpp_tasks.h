@@ -35,6 +35,7 @@ namespace XMPP
 	class Roster;
 	class Status;
 
+        /** @brief Task for registering to server, usually new account. */
 	class JT_Register : public Task
 	{
 		Q_OBJECT
@@ -66,6 +67,7 @@ namespace XMPP
 		Private *d;
 	};
 
+        /** @brief Task to remove our account. */
 	class JT_UnRegister : public Task
 	{
 		Q_OBJECT
@@ -86,6 +88,7 @@ namespace XMPP
 		Private *d;
 	};
 
+        /** @brief Task for managing our roster, contacts and groups. */
 	class JT_Roster : public Task
 	{
 		Q_OBJECT
@@ -131,6 +134,7 @@ namespace XMPP
 		Private *d;
 	};
 
+        /** @brief Task to handle presence changes. */
 	class JT_Presence : public Task
 	{
 		Q_OBJECT
@@ -212,6 +216,8 @@ namespace XMPP
 		Private *d;
 	};
 
+        /** @brief Class to request list of services from server.
+            Note: this method is obsolete and modern XMPP server does not support it. User JT_ServInfo instead. */
 	class JT_GetServices : public Task
 	{
 		Q_OBJECT
@@ -234,6 +240,7 @@ namespace XMPP
 		AgentList agentList;
 	};
 
+        /** @brief Request contact information details or update my own. */
 	class JT_VCard : public Task
 	{
 		Q_OBJECT
@@ -258,6 +265,7 @@ namespace XMPP
 		Private *d;
 	};
 
+        /** @brief Task for searching in user directory. */
 	class JT_Search : public Task
 	{
 		Q_OBJECT
@@ -335,6 +343,7 @@ namespace XMPP
 		bool take(const QDomElement &);
 	};
 
+        /** @brief Task to get JID from username on foreign network gateways. */
 	class JT_Gateway : public Task
 	{
 		Q_OBJECT
@@ -361,6 +370,9 @@ namespace XMPP
 		QString v_prompt, v_desc;
 	};
 
+        /** @brief This is legacy method to list services avaiable on server.
+        Note: this method is obsoleted by XEP-70: Disco, see @class JT_DiscoItems instead. 
+        */
 	class JT_Browse : public Task
 	{
 		Q_OBJECT
@@ -383,6 +395,7 @@ namespace XMPP
 		AgentItem browseHelper (const QDomElement &i);
 	};
 
+        /** @brief Task to list services or or commands from server or jid. */
 	class JT_DiscoItems : public Task
 	{
 		Q_OBJECT

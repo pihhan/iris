@@ -211,8 +211,8 @@ XDomNodeList childElementsByTagNameNS(const QDomElement &e, const QString &nsURI
 
 /**
  * \brief create a new IQ stanza
- * \param doc 
- * \param type 
+ * \param doc QDomDocument that will contain this stanza, propably from client.
+ * \param type One of get, set, result or error, as defined by XMPP
  * \param to destination jid
  * \param id stanza id
  * \return the created stanza

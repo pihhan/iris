@@ -377,6 +377,7 @@ JT_Roster::~JT_Roster()
 	delete d;
 }
 
+/** @brief Request roster from server. */
 void JT_Roster::get()
 {
 	type = 0;
@@ -387,6 +388,11 @@ void JT_Roster::get()
 	iq.appendChild(query);
 }
 
+/** @brief Push new contact to my roster.
+    @param jid JabberId of contact we are adding.
+    @param name Nickname user set for new contact. If not specified, empty.
+    @param groups List of group names new contact will be member in. 
+*/
 void JT_Roster::set(const Jid &jid, const QString &name, const QStringList &groups)
 {
 	type = 1;
@@ -400,6 +406,8 @@ void JT_Roster::set(const Jid &jid, const QString &name, const QStringList &grou
 	d->itemList += item;
 }
 
+/** @brief Request deleting user from roster. 
+    @param jid Jid of contact we are to remove. He should exist in roster. */
 void JT_Roster::remove(const Jid &jid)
 {
 	type = 1;
@@ -467,6 +475,7 @@ bool JT_Roster::fromString(const QString &str)
 	return true;
 }
 
+/** @brief Parse incoming XML stanza and apply changes to roster. */
 bool JT_Roster::take(const QDomElement &x)
 {
 	if(!iqVerify(x, client()->host(), id()))
@@ -880,6 +889,10 @@ JT_GetServices::JT_GetServices(Task *parent)
 {
 }
 
+/** @brief Create legacy request to list services using jabber:iq:agents.
+    @param j Jid of server you want agents from.
+    Note: This is obsolete method for listing services, you should use Disco method, see XEP-70.
+*/
 void JT_GetServices::get(const Jid &j)
 {
 	agentList.clear();
@@ -901,6 +914,9 @@ void JT_GetServices::onGo()
 	send(iq);
 }
 
+/** @brief Parse reply with list of services.
+    @return false if something was not correct, true if reply had correct format.
+*/
 bool JT_GetServices::take(const QDomElement &x)
 {
 	if(!iqVerify(x, jid, id()))
@@ -984,6 +1000,8 @@ JT_VCard::~JT_VCard()
 	delete d;
 }
 
+/** @brief Request vCard of contact.
+    @param _jid JabberId we want details about. Can be bare JID or domain part, full JID is not expected. */
 void JT_VCard::get(const Jid &_jid)
 {
 	type = 0;
@@ -1006,6 +1024,7 @@ const VCard & JT_VCard::vcard() const
 	return d->vcard;
 }
 
+/** @brief Replace our vCard with one specified here. */
 void JT_VCard::set(const VCard &card)
 {
 	type = 1;
@@ -1015,6 +1034,9 @@ void JT_VCard::set(const VCard &card)
 	d->iq.appendChild(card.toXml(doc()) );
 }
 
+/** @brief Replace vCard of j with one specified here.
+    @param j JID which vCard is to be upgraded.
+    @param card New data to be published. */
 void JT_VCard::set(const Jid &j, const VCard &card)
 {
 	type = 1;
@@ -1024,6 +1046,7 @@ void JT_VCard::set(const Jid &j, const VCard &card)
 	d->iq.appendChild(card.toXml(doc()) );
 }
 
+/** @brief Send created request. */
 void JT_VCard::onGo()
 {
 	send(d->iq);
@@ -1083,6 +1106,7 @@ public:
 	QList<SearchResult> resultList;
 };
 
+/** @brief Create search request. */
 JT_Search::JT_Search(Task *parent)
 :Task(parent)
 {
@@ -1095,6 +1119,8 @@ JT_Search::~JT_Search()
 	delete d;
 }
 
+/** @brief Request search form and parameters from specified jid. 
+    @param jid JID of search service. */
 void JT_Search::get(const Jid &jid)
 {
 	type = 0;
@@ -1107,6 +1133,8 @@ void JT_Search::get(const Jid &jid)
 	iq.appendChild(query);
 }
 
+/** @brief Send filled form back to jid in form.
+    @param form Filled parameters of search. */
 void JT_Search::set(const Form &form)
 {
 	type = 1;
@@ -1129,6 +1157,9 @@ void JT_Search::set(const Form &form)
 	}
 }
 
+/** @brief Send filled form back to specified jid.
+    @param jid JID of search service we send parameters to.
+    @param form Filled parameters of search. */
 void JT_Search::set(const Jid &jid, const XData &form)
 {
 	type = 1;
@@ -1147,11 +1178,15 @@ const Form & JT_Search::form() const
 	return d->form;
 }
 
+/** @brief Get list of results. */
 const QList<SearchResult> & JT_Search::results() const
 {
 	return d->resultList;
 }
 
+/** @brief Ask if reply contains XData form or simple XML reply.
+    @return true if result has format of XData form, false if XData is not present.
+    */
 bool JT_Search::hasXData() const
 {
 	return d->hasXData;
@@ -1167,6 +1202,8 @@ void JT_Search::onGo()
 	send(iq);
 }
 
+/** @brief Parse reply.
+    @return true if reply is correct, false if it is not. */
 bool JT_Search::take(const QDomElement &x)
 {
 	if(!iqVerify(x, d->jid, id()))
@@ -1370,6 +1407,7 @@ bool JT_ClientTime::take(const QDomElement &x)
 //----------------------------------------------------------------------------
 // JT_ServInfo
 //----------------------------------------------------------------------------
+/** @brief Create request to list features and version of JID. */
 JT_ServInfo::JT_ServInfo(Task *parent)
 :Task(parent)
 {

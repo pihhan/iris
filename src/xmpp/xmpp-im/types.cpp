@@ -923,7 +923,7 @@ public:
 	bool spooled, wasEncrypted;
 };
 
-//! \brief Constructs Message with given Jid information.
+//! \brief Constructs Message with given target Jid information.
 //!
 //! This function will construct a Message container.
 //! \param to - specify reciver (default: empty string)
