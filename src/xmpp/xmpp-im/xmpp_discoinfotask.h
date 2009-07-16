@@ -31,13 +31,19 @@ class QDomElement;
 
 namespace XMPP
 {
+        /** \brief Task to create request to another XMPP entity and parse it. 
+        
+        It support only get method. It will emit finished signal when reply 
+        arrives. \see Task */
 	class DiscoInfoTask : public Task
 	{
 		Q_OBJECT
 	public:
 		DiscoInfoTask(Task *);
 		~DiscoInfoTask();
-	
+
+                /** \brief Configure destination JID and node.
+                    \param node Specify node attribute, if you do not want generic request. */	
 		void get(const Jid &, const QString &node = QString::null, const DiscoItem::Identity = DiscoItem::Identity());
 		void get(const DiscoItem &);
 	

@@ -27,6 +27,9 @@ namespace QCA {
 
 namespace XMPP
 {
+        /** @brief Create simplified SASL provider for QCA.
+            Does not support all features, use this only if 
+            full features SASL is unavailable. */
 	QCA::Provider* createProviderSimpleSASL();
 }
 

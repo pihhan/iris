@@ -90,6 +90,7 @@ void Connector::setUseSSL(bool b)
 	ssl = b;
 }
 
+/** \brief Reset remote address to default address and port. */
 void Connector::setPeerAddressNone()
 {
 	haveaddr = false;
@@ -97,6 +98,7 @@ void Connector::setPeerAddressNone()
 	port = 0;
 }
 
+/** \brief Set remote address and destination port */
 void Connector::setPeerAddress(const QHostAddress &_addr, quint16 _port)
 {
 	haveaddr = true;
@@ -158,6 +160,7 @@ int AdvancedConnector::Proxy::pollInterval() const
 	return v_poll;
 }
 
+/** \brief Set type of connection to HTTP Connect and specify destination ports. */
 void AdvancedConnector::Proxy::setHttpConnect(const QString &host, quint16 port)
 {
 	t = HttpConnect;
@@ -165,6 +168,10 @@ void AdvancedConnector::Proxy::setHttpConnect(const QString &host, quint16 port)
 	v_port = port;
 }
 
+/** \brief Set type of connection to periodic polling.
+    \param host Hostname where to connect. It is empty, hostname from URL will be used.
+    \param port Proxy port
+    \param url URL address, that will be polled for new events. */
 void AdvancedConnector::Proxy::setHttpPoll(const QString &host, quint16 port, const QString &url)
 {
 	t = HttpPoll;
@@ -278,6 +285,7 @@ void AdvancedConnector::setProxy(const Proxy &proxy)
 	d->proxy = proxy;
 }
 
+/** \brief Configure manual destination address and port. */
 void AdvancedConnector::setOptHostPort(const QString &host, quint16 _port)
 {
 	if(d->mode != Idle)
@@ -291,6 +299,7 @@ void AdvancedConnector::setOptHostPort(const QString &host, quint16 _port)
 	d->opt_port = _port;
 }
 
+/** \brief Configure several destination addreses and common port for all of them. */
 void AdvancedConnector::setOptHostsPort(const QStringList &_hosts, quint16 _port)
 {
 	if(d->mode != Idle)

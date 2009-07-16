@@ -32,6 +32,7 @@ namespace XMPP {
 	class Jid;
 
         /** @brief Parent class for single requests.
+
         It does implement unique id generator and infrastrucuture for specific
         IQ request as roster manager, version requests and such.
         Usual scenario is to create task using parent task or client, then

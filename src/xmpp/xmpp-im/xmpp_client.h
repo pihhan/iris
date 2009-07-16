@@ -50,6 +50,7 @@ namespace XMPP {
 
 namespace XMPP
 {
+        /** \brief Full features main class that represents one connection to XMPP server. */
 	class Client : public QObject
 	{
 		Q_OBJECT
@@ -60,6 +61,7 @@ namespace XMPP
 
 		bool isActive() const;
 		void connectToServer(ClientStream *s, const Jid &j, bool auth=true);
+                /** \brief Initiate connection with specified hostname, username with password and resource. */
 		void start(const QString &host, const QString &user, const QString &pass, const QString &resource);
 		void close(bool fast=false);
 
@@ -68,6 +70,8 @@ namespace XMPP
 		const LiveRoster & roster() const;
 		const ResourceList & resourceList() const;
 
+                /** \brief Send XML subtree over wire.
+                    You should use \see Stanza class to form that subtree. */
 		void send(const QDomElement &);
 		void send(const QString &);
 
@@ -80,10 +84,13 @@ namespace XMPP
 		void rosterRequest();
 		void sendMessage(const Message &);
 		void sendSubscription(const Jid &, const QString &, const QString& nick = QString());
+                /** \brief Change my presence information to specified status. */
 		void setPresence(const Status &);
 
 		void debug(const QString &);
+                /** \brief Generate unique identifier that can be used in new IQ requests or messages. */
 		QString genUniqueId();
+                /** \brief Get task that distributes incoming stanzas to other tasks. */
 		Task *rootTask();
 		QDomDocument *doc() const;
 
@@ -92,8 +99,11 @@ namespace XMPP
 		int timeZoneOffset() const;
 		QString clientName() const;
 		QString clientVersion() const;
+                /** \brief Return this client node identifier, as specified in XEP-115. */
 		QString capsNode() const;
+                /** \brief Return this client version string, as specified in XEP-115. Note that in recent specification it should be hash, not version. New caps spec is not yet supported however. */
 		QString capsVersion() const;
+                /** \brief List of extensions. */
 		QString capsExt() const;
 
 		void setOSName(const QString &);
@@ -109,6 +119,9 @@ namespace XMPP
 		void setFeatures(const Features& f);
 		const Features& features() const;
 
+                /** \brief Add new extension with its features to client. Do
+                not add features already present in main features, only that
+                are specific to this extension. */
 		void addExtension(const QString& ext, const Features& f);
 		void removeExtension(const QString& ext);
 		const Features& extension(const QString& ext) const;
