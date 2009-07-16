@@ -554,6 +554,7 @@ JT_Presence::~JT_Presence()
 {
 }
 
+/** \brief Construct presence stanza from given Status class */
 void JT_Presence::pres(const Status &s)
 {
 	type = 0;
@@ -593,6 +594,8 @@ void JT_Presence::pres(const Status &s)
 			c.setAttribute("ver",s.capsVersion());
 			if (!s.capsExt().isEmpty()) 
 				c.setAttribute("ext",s.capsExt());
+                        if (!s.capsHash().isEmpty())
+                                c.setAttribute("hash", s.capsHash());
 			tag.appendChild(c);
 		}
 
@@ -624,6 +627,13 @@ void JT_Presence::pres(const Status &s)
 	}
 }
 
+/** \brief Construct XML tree of presence stanza with destination jid.
+    \param to Target jid where to send presence.
+    \param s Status class to represent as XML subtree.
+    Usually presence from client is sent without destination. XMPP will forward 
+    presence stanza to all subscribed receivers. This will send presence only
+    to specified JID, often called as custom status feature. Useful also for
+    login or logout from gateway without changing global status. */
 void JT_Presence::pres(const Jid &to, const Status &s)
 {
 	pres(s);
@@ -672,6 +682,9 @@ JT_PushPresence::~JT_PushPresence()
 {
 }
 
+/** \brief Parse incoming presence stanza into Status structure.
+    \return true if stanza was presence stanza, false otherwise. 
+    */
 bool JT_PushPresence::take(const QDomElement &e)
 {
 	if(e.tagName() != "presence")
@@ -754,6 +767,7 @@ bool JT_PushPresence::take(const QDomElement &e)
  			p.setCapsNode(i.attribute("node"));
  			p.setCapsVersion(i.attribute("ver"));
  			p.setCapsExt(i.attribute("ext"));
+                        p.setCapsHash(i.attribute("hash"));
   		}
 		else if(i.tagName() == "x" && i.attribute("xmlns") == "vcard-temp:x:update") {
 			QDomElement t;
