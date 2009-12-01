@@ -22,10 +22,13 @@
 
 #include <QSharedData>
 #include <QtCrypto>
+#include "stunutil.h"
 
 #define ENSURE_D { if(!d) d = new Private; }
 
 namespace XMPP {
+
+using namespace StunUtil;
 
 // some attribute types we need to explicitly support
 enum
@@ -139,40 +142,6 @@ public:
 };
 
 static quint8 magic_cookie[4] = { 0x21, 0x12, 0xA4, 0x42 };
-
-static quint16 read16(const quint8 *in)
-{
-	quint16 out = in[0];
-	out <<= 8;
-	out += in[1];
-	return out;
-}
-
-static quint32 read32(const quint8 *in)
-{
-	quint32 out = in[0];
-	out <<= 8;
-	out += in[1];
-	out <<= 8;
-	out += in[2];
-	out <<= 8;
-	out += in[3];
-	return out;
-}
-
-static void write16(quint8 *out, quint16 i)
-{
-	out[0] = (i >> 8) & 0xff;
-	out[1] = i & 0xff;
-}
-
-static void write32(quint8 *out, quint32 i)
-{
-	out[0] = (i >> 24) & 0xff;
-	out[1] = (i >> 16) & 0xff;
-	out[2] = (i >> 8) & 0xff;
-	out[3] = i & 0xff;
-}
 
 // do 3-field check of stun packet
 // returns length of packet not counting the header, or -1 on error
@@ -562,6 +531,8 @@ QByteArray StunMessage::toBinary(int validationFlags, const QByteArray &key) con
 		if(at == -1)
 			return QByteArray();
 
+		p = (quint8 *)buf.data(); // follow the resize
+
 		memcpy(buf.data() + at + 4, i.value.data(), i.value.size());
 	}
 
@@ -715,6 +686,32 @@ StunMessage StunMessage::fromBinary(const QByteArray &a, ConvertResult *result, 
 bool StunMessage::isProbablyStun(const QByteArray &a)
 {
 	return (check_and_get_length(a) != -1 ? true: false);
+}
+
+StunMessage::Class StunMessage::extractClass(const QByteArray &in)
+{
+	const quint8 *p = (const quint8 *)in.data();
+
+	// class bits are split into 2 sections
+	quint8 c1, c2;
+	c1 = p[0] & 0x01; // C1
+	c1 <<= 1;
+	c2 = p[1] & 0x10; // C0
+	c2 >>= 4;
+
+	quint8 classbits = c1 | c2;
+
+	Class mclass;
+	if(classbits == 0) // 00
+		mclass = Request;
+	else if(classbits == 1) // 01
+		mclass = Indication;
+	else if(classbits == 2) // 10
+		mclass = SuccessResponse;
+	else // 11
+		mclass = ErrorResponse;
+
+	return mclass;
 }
 
 }
