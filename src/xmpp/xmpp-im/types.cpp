@@ -914,6 +914,7 @@ public:
 	XData xdata;
 	QMap<QString,HTMLElement> htmlElements;
  	QDomElement sxe;
+ 	QDomElement wb;
 	
 	QList<int> mucStatuses;
 	QList<MUCInvite> mucInvites;
@@ -1380,6 +1381,16 @@ void Message::setSxe(const QDomElement& e)
 	d->sxe = e;
 }
 
+const QDomElement& Message::whiteboard() const
+{
+	return d->wb;
+}
+
+void Message::setWhiteboard(const QDomElement& e)
+{
+	d->wb = e;
+}
+
 bool Message::spooled() const
 {
 	return d->spooled;
@@ -1576,6 +1587,11 @@ Stanza Message::toStanza(Stream *stream) const
 	// sxe
 	if(!d->sxe.isNull()) {
 		s.appendChild(d->sxe);
+	}
+
+	// wb
+	if(!d->wb.isNull()) {
+		s.appendChild(d->wb);
 	}
 
 	// muc
@@ -1848,6 +1864,13 @@ bool Message::fromStanza(const Stanza &s, bool useTimeZoneOffset, int timeZoneOf
 		d->sxe = t;
 	else
 		d->sxe = QDomElement();
+
+	// wb
+	t = root.elementsByTagNameNS("http://jabber.org/protocol/svgwb", "wb").item(0).toElement();
+	if(!t.isNull())
+		d->wb = t;
+	else
+		d->wb = QDomElement();
 
 	t = childElementsByTagNameNS(root, "http://jabber.org/protocol/muc#user", "x").item(0).toElement();
 	if(!t.isNull()) {
