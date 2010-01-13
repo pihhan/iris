@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009,2010  Barracuda Networks, Inc.
+ * Copyright (C) 2010  Barracuda Networks, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,73 +18,54 @@
  *
  */
 
-#ifndef ICELOCALTRANSPORT_H
-#define ICELOCALTRANSPORT_H
+#ifndef ICETURNTRANSPORT_H
+#define ICETURNTRANSPORT_H
 
 #include <QObject>
 #include <QByteArray>
+#include <QHostAddress>
+#include "turnclient.h"
 #include "icetransport.h"
-
-class QHostAddress;
-class QUdpSocket;
-
-namespace QCA {
-	class SecureArray;
-}
 
 namespace XMPP {
 
-// this class manages a single port on a single interface, including the
-//   relationship with an associated STUN/TURN server.  if TURN is used, this
-//   class offers two paths (0=direct and 1=relayed), otherwise it offers
-//   just one path (0=direct)
-class IceLocalTransport : public IceTransport
+// for the turn transport, only path 0 is used
+
+class IceTurnTransport : public IceTransport
 {
 	Q_OBJECT
 
 public:
-	enum StunServiceType
+	enum Error
 	{
-		Auto,
-		Basic,
-		Relay
+		ErrorTurn = ErrorCustom
 	};
 
-	IceLocalTransport(QObject *parent = 0);
-	~IceLocalTransport();
+	IceTurnTransport(QObject *parent = 0);
+	~IceTurnTransport();
 
 	void setClientSoftwareNameAndVersion(const QString &str);
 
-	// passed socket must already be bind()'ed
-	void start(QUdpSocket *sock);
+	// set these before calling start()
+	void setUsername(const QString &user);
+	void setPassword(const QCA::SecureArray &pass);
 
-	void setStunService(const QHostAddress &addr, int port, StunServiceType type = Auto);
-	void setStunUsername(const QString &user);
-	void setStunPassword(const QCA::SecureArray &pass);
+	void setProxy(const TurnClient::Proxy &proxy);
 
-	// obtain relay / reflexive
-	void stunStart();
-
-	QHostAddress localAddress() const;
-	int localPort() const;
-
-	QHostAddress serverReflexiveAddress() const;
-	int serverReflexivePort() const;
+	void start(const QHostAddress &addr, int port, TurnClient::Mode mode = TurnClient::PlainMode);
 
 	QHostAddress relayedAddress() const;
 	int relayedPort() const;
 
 	void addChannelPeer(const QHostAddress &addr, int port);
 
+	TurnClient::Error turnErrorCode() const;
+
 	// reimplemented
 	virtual void stop();
 	virtual bool hasPendingDatagrams(int path) const;
 	virtual QByteArray readDatagram(int path, QHostAddress *addr, int *port);
 	virtual void writeDatagram(int path, const QByteArray &buf, const QHostAddress &addr, int port);
-
-signals:
-	// may be emitted multiple times if Auto is used
-	void stunFinished();
 
 private:
 	class Private;
