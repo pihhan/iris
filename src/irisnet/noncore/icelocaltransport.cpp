@@ -184,6 +184,7 @@ public:
 
 	IceLocalTransport *q;
 	ObjectSession sess;
+	QUdpSocket *extSock;
 	SafeUdpSocket *sock;
 	StunTransactionPool *pool;
 	StunBinding *stunBinding;
@@ -204,6 +205,8 @@ public:
 	QList<Datagram> in;
 	QList<Datagram> inRelayed;
 	QList<WriteItem> pendingWrites;
+	int retryCount;
+	bool stopping;
 
 	Private(IceLocalTransport *_q) :
 		QObject(_q),
@@ -216,7 +219,9 @@ public:
 		turnActivated(false),
 		port(-1),
 		refPort(-1),
-		relPort(-1)
+		relPort(-1),
+		retryCount(0),
+		stopping(false)
 	{
 	}
 
@@ -238,10 +243,14 @@ public:
 
 		if(sock)
 		{
-			QUdpSocket *qsock = sock->release();
+			if(extSock)
+			{
+				sock->release();
+				extSock = 0;
+			}
+
 			delete sock;
 			sock = 0;
-			qsock->deleteLater();
 		}
 
 		addr = QHostAddress();
@@ -256,17 +265,14 @@ public:
 		in.clear();
 		inRelayed.clear();
 		pendingWrites.clear();
+
+		retryCount = 0;
+		stopping = false;
 	}
 
-	void start(QUdpSocket *qsock)
+	void start()
 	{
 		Q_ASSERT(!sock);
-
-		sock = new SafeUdpSocket(qsock, this);
-		addr = sock->localAddress();
-		port = sock->localPort();
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(datagramsWritten(int)), SLOT(sock_datagramsWritten(int)));
 
 		sess.defer(this, "postStart");
 	}
@@ -274,6 +280,9 @@ public:
 	void stop()
 	{
 		Q_ASSERT(sock);
+		Q_ASSERT(!stopping);
+
+		stopping = true;
 
 		if(turn)
 			turn->close();
@@ -287,6 +296,7 @@ public:
 
 		pool = new StunTransactionPool(StunTransaction::Udp, this);
 		connect(pool, SIGNAL(outgoingMessage(const QByteArray &, const QHostAddress &, int)), SLOT(pool_outgoingMessage(const QByteArray &, const QHostAddress &, int)));
+		connect(pool, SIGNAL(needAuthParams()), SLOT(pool_needAuthParams()));
 
 		pool->setLongTermAuthEnabled(true);
 		if(!stunUser.isEmpty())
@@ -317,24 +327,99 @@ public:
 
 		if(useTurn)
 		{
-			turn = new TurnClient(this);
-			connect(turn, SIGNAL(connected()), SLOT(turn_connected()));
-			connect(turn, SIGNAL(tlsHandshaken()), SLOT(turn_tlsHandshaken()));
-			connect(turn, SIGNAL(closed()), SLOT(turn_closed()));
-			connect(turn, SIGNAL(retrying()), SLOT(turn_retrying()));
-			connect(turn, SIGNAL(activated()), SLOT(turn_activated()));
-			connect(turn, SIGNAL(packetsWritten(int, const QHostAddress &, int)), SLOT(turn_packetsWritten(int, const QHostAddress &, int)));
-			connect(turn, SIGNAL(error(XMPP::TurnClient::Error)), SLOT(turn_error(XMPP::TurnClient::Error)));
-			connect(turn, SIGNAL(outgoingDatagram(const QByteArray &)), SLOT(turn_outgoingDatagram(const QByteArray &)));
-			connect(turn, SIGNAL(debugLine(const QString &)), SLOT(turn_debugLine(const QString &)));
-
-			turn->setClientSoftwareNameAndVersion(clientSoftware);
-
-			turn->connectToHost(pool);
+			do_turn();
 		}
 	}
 
+	void do_turn()
+	{
+		turn = new TurnClient(this);
+		connect(turn, SIGNAL(connected()), SLOT(turn_connected()));
+		connect(turn, SIGNAL(tlsHandshaken()), SLOT(turn_tlsHandshaken()));
+		connect(turn, SIGNAL(closed()), SLOT(turn_closed()));
+		connect(turn, SIGNAL(activated()), SLOT(turn_activated()));
+		connect(turn, SIGNAL(packetsWritten(int, const QHostAddress &, int)), SLOT(turn_packetsWritten(int, const QHostAddress &, int)));
+		connect(turn, SIGNAL(error(XMPP::TurnClient::Error)), SLOT(turn_error(XMPP::TurnClient::Error)));
+		connect(turn, SIGNAL(outgoingDatagram(const QByteArray &)), SLOT(turn_outgoingDatagram(const QByteArray &)));
+		connect(turn, SIGNAL(debugLine(const QString &)), SLOT(turn_debugLine(const QString &)));
+
+		turn->setClientSoftwareNameAndVersion(clientSoftware);
+
+		turn->connectToHost(pool);
+	}
+
 private:
+	// note: emits signal on error
+	QUdpSocket *createSocket()
+	{
+		QUdpSocket *qsock = new QUdpSocket(this);
+		if(!qsock->bind(addr, 0))
+		{
+			delete qsock;
+			emit q->error(IceLocalTransport::ErrorBind);
+			return 0;
+		}
+
+		return qsock;
+	}
+
+	void prepareSocket()
+	{
+		addr = sock->localAddress();
+		port = sock->localPort();
+
+		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
+		connect(sock, SIGNAL(datagramsWritten(int)), SLOT(sock_datagramsWritten(int)));
+	}
+
+	// return true if we are retrying, false if we should error out
+	bool handleRetry()
+	{
+		// don't allow retrying if activated or stopping)
+		if(turnActivated || stopping)
+			return false;
+
+		++retryCount;
+		if(retryCount)
+		{
+			printf("retrying...\n");
+
+			delete sock;
+			sock = 0;
+
+			// to receive this error, it is a Relay, so change
+			//   the mode
+			stunType = IceLocalTransport::Relay;
+
+			QUdpSocket *qsock = createSocket();
+			if(!qsock)
+			{
+				// signal emitted in this case.  bail.
+				//   (return true so caller takes no action)
+				return true;
+			}
+
+			sock = new SafeUdpSocket(qsock, this);
+
+			prepareSocket();
+
+			refAddr = QHostAddress();
+			refPort = -1;
+
+			relAddr = QHostAddress();
+			relPort = -1;
+
+			do_turn();
+
+			// tell the world that our local address probably
+			//   changed, and that we lost our reflexive address
+			emit q->addressesChanged();
+			return true;
+		}
+
+		return false;
+	}
+
 	// return true if data packet, false if pool or nothing
 	bool processIncomingStun(const QByteArray &buf, Datagram *dg)
 	{
@@ -363,6 +448,24 @@ private:
 private slots:
 	void postStart()
 	{
+		if(extSock)
+		{
+			sock = new SafeUdpSocket(extSock, this);
+		}
+		else
+		{
+			QUdpSocket *qsock = createSocket();
+			if(!qsock)
+			{
+				// signal emitted in this case.  bail
+				return;
+			}
+
+			sock = new SafeUdpSocket(qsock, this);
+		}
+
+		prepareSocket();
+
 		emit q->started();
 	}
 
@@ -493,6 +596,15 @@ private slots:
 		sock->writeDatagram(packet, stunAddr, stunPort);
 	}
 
+	void pool_needAuthParams()
+	{
+		// we can get this signal if the user did not provide
+		//   creds to us.  however, since this class doesn't support
+		//   prompting just continue on as if we had a blank
+		//   user/pass
+		pool->continueAfterParams();
+	}
+
 	void binding_success()
 	{
 		refAddr = stunBinding->reflexiveAddress();
@@ -501,7 +613,7 @@ private slots:
 		delete stunBinding;
 		stunBinding = 0;
 
-		emit q->stunFinished();
+		emit q->addressesChanged();
 	}
 
 	void binding_error(XMPP::StunBinding::Error e)
@@ -511,8 +623,8 @@ private slots:
 		delete stunBinding;
 		stunBinding = 0;
 
-		if(stunType == IceLocalTransport::Basic || (stunType == IceLocalTransport::Auto && !turn))
-			emit q->stunFinished();
+		//if(stunType == IceLocalTransport::Basic || (stunType == IceLocalTransport::Auto && !turn))
+		//	emit q->addressesChanged();
 	}
 
 	void turn_connected()
@@ -536,11 +648,6 @@ private slots:
 		postStop();
 	}
 
-	void turn_retrying()
-	{
-		printf("turn_retrying\n");
-	}
-
 	void turn_activated()
 	{
 		StunAllocate *allocate = turn->stunAllocate();
@@ -555,7 +662,7 @@ private slots:
 
 		turnActivated = true;
 
-		emit q->stunFinished();
+		emit q->addressesChanged();
 	}
 
 	void turn_packetsWritten(int count, const QHostAddress &addr, int port)
@@ -565,8 +672,6 @@ private slots:
 
 	void turn_error(XMPP::TurnClient::Error e)
 	{
-		Q_UNUSED(e);
-
 		printf("turn_error: %s\n", qPrintable(turn->errorString()));
 
 		delete turn;
@@ -574,13 +679,19 @@ private slots:
 		bool wasActivated = turnActivated;
 		turnActivated = false;
 
+		if(e == TurnClient::ErrorMismatch)
+		{
+			if(!extSock && handleRetry())
+				return;
+		}
+
 		// this means our relay died on us.  in the future we might
 		//   consider reporting this
 		if(wasActivated)
 			return;
 
-		if(stunType == IceLocalTransport::Relay || (stunType == IceLocalTransport::Auto && !stunBinding))
-			emit q->stunFinished();
+		//if(stunType == IceLocalTransport::Relay || (stunType == IceLocalTransport::Auto && !stunBinding))
+		//	emit q->addressesChanged();
 	}
 
 	void turn_outgoingDatagram(const QByteArray &buf)
@@ -615,7 +726,14 @@ void IceLocalTransport::setClientSoftwareNameAndVersion(const QString &str)
 
 void IceLocalTransport::start(QUdpSocket *sock)
 {
-	d->start(sock);
+	d->extSock = sock;
+	d->start();
+}
+
+void IceLocalTransport::start(const QHostAddress &addr)
+{
+	d->addr = addr;
+	d->start();
 }
 
 void IceLocalTransport::stop()
