@@ -24,6 +24,8 @@
 #include <QObject>
 #include <QString>
 
+#include "xmpp_stanza.h"
+
 class QDomDocument;
 class QDomElement;
 
@@ -57,6 +59,9 @@ namespace XMPP {
 		bool success() const;
 		int statusCode() const;
 		const QString & statusString() const;
+
+                int errorType() const;
+                int errorCondition() const;
 
                 /** @brief Actually send a request.
                     @param autoDelete If is true, request will delete itself after finished() signal. */
@@ -100,6 +105,7 @@ namespace XMPP {
                     */
 		bool iqVerify(const QDomElement &x, const Jid &to, const QString &id, const QString &xmlns="");
 
+        static Stanza::Error * getStanzaErrorFromElement(const QDomElement &e, const QString &baseNs);
 	private slots:
 		void clientDisconnected();
 		void done();

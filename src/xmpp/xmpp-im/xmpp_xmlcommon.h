@@ -24,6 +24,8 @@
 #include <qdom.h>
 #include <qlist.h>
 
+#include "xmpp_xmlcommon.h"
+
 class QDateTime;
 class QRect;
 class QSize;
