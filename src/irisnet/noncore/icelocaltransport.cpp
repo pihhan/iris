@@ -196,9 +196,10 @@ public:
 	int refPort;
 	QHostAddress relAddr;
 	int relPort;
-	QHostAddress stunAddr;
-	int stunPort;
-	IceLocalTransport::StunServiceType stunType;
+	QHostAddress stunBindAddr;
+	int stunBindPort;
+	QHostAddress stunRelayAddr;
+	int stunRelayPort;
 	QString stunUser;
 	QCA::SecureArray stunPass;
 	QString clientSoftware;
@@ -207,11 +208,13 @@ public:
 	QList<WriteItem> pendingWrites;
 	int retryCount;
 	bool stopping;
+	int debugLevel;
 
 	Private(IceLocalTransport *_q) :
 		QObject(_q),
 		q(_q),
 		sess(this),
+		extSock(0),
 		sock(0),
 		pool(0),
 		stunBinding(0),
@@ -221,7 +224,8 @@ public:
 		refPort(-1),
 		relPort(-1),
 		retryCount(0),
-		stopping(false)
+		stopping(false),
+		debugLevel(IceTransport::DL_None)
 	{
 	}
 
@@ -295,8 +299,10 @@ public:
 		Q_ASSERT(!pool);
 
 		pool = new StunTransactionPool(StunTransaction::Udp, this);
+		pool->setDebugLevel((StunTransactionPool::DebugLevel)debugLevel);
 		connect(pool, SIGNAL(outgoingMessage(const QByteArray &, const QHostAddress &, int)), SLOT(pool_outgoingMessage(const QByteArray &, const QHostAddress &, int)));
 		connect(pool, SIGNAL(needAuthParams()), SLOT(pool_needAuthParams()));
+		connect(pool, SIGNAL(debugLine(const QString &)), SLOT(pool_debugLine(const QString &)));
 
 		pool->setLongTermAuthEnabled(true);
 		if(!stunUser.isEmpty())
@@ -305,27 +311,15 @@ public:
 			pool->setPassword(stunPass);
 		}
 
-		bool useStun = false;
-		bool useTurn = false;
-		if(stunType == IceLocalTransport::Basic)
-			useStun = true;
-		else if(stunType == IceLocalTransport::Relay)
-			useTurn = true;
-		else // Auto
-		{
-			useStun = true;
-			useTurn = true;
-		}
-
-		if(useStun)
+		if(!stunBindAddr.isNull())
 		{
 			stunBinding = new StunBinding(pool);
 			connect(stunBinding, SIGNAL(success()), SLOT(binding_success()));
 			connect(stunBinding, SIGNAL(error(XMPP::StunBinding::Error)), SLOT(binding_error(XMPP::StunBinding::Error)));
-			stunBinding->start();
+			stunBinding->start(stunBindAddr, stunBindPort);
 		}
 
-		if(useTurn)
+		if(!stunRelayAddr.isNull())
 		{
 			do_turn();
 		}
@@ -334,6 +328,7 @@ public:
 	void do_turn()
 	{
 		turn = new TurnClient(this);
+		turn->setDebugLevel((TurnClient::DebugLevel)debugLevel);
 		connect(turn, SIGNAL(connected()), SLOT(turn_connected()));
 		connect(turn, SIGNAL(tlsHandshaken()), SLOT(turn_tlsHandshaken()));
 		connect(turn, SIGNAL(closed()), SLOT(turn_closed()));
@@ -345,7 +340,7 @@ public:
 
 		turn->setClientSoftwareNameAndVersion(clientSoftware);
 
-		turn->connectToHost(pool);
+		turn->connectToHost(pool, stunRelayAddr, stunRelayPort);
 	}
 
 private:
@@ -380,16 +375,17 @@ private:
 			return false;
 
 		++retryCount;
-		if(retryCount)
+		if(retryCount < 3)
 		{
-			printf("retrying...\n");
+			if(debugLevel >= IceTransport::DL_Info)
+				emit q->debugLine("retrying...");
 
 			delete sock;
 			sock = 0;
 
 			// to receive this error, it is a Relay, so change
 			//   the mode
-			stunType = IceLocalTransport::Relay;
+			//stunType = IceLocalTransport::Relay;
 
 			QUdpSocket *qsock = createSocket();
 			if(!qsock)
@@ -421,25 +417,28 @@ private:
 	}
 
 	// return true if data packet, false if pool or nothing
-	bool processIncomingStun(const QByteArray &buf, Datagram *dg)
+	bool processIncomingStun(const QByteArray &buf, const QHostAddress &fromAddr, int fromPort, Datagram *dg)
 	{
 		QByteArray data;
-		QHostAddress fromAddr;
-		int fromPort;
+		QHostAddress dataAddr;
+		int dataPort;
 
 		bool notStun;
-		if(!pool->writeIncomingMessage(buf, &notStun))
+		if(!pool->writeIncomingMessage(buf, &notStun, fromAddr, fromPort) && turn)
 		{
-			data = turn->processIncomingDatagram(buf, notStun, &fromAddr, &fromPort);
+			data = turn->processIncomingDatagram(buf, notStun, &dataAddr, &dataPort);
 			if(!data.isNull())
 			{
-				dg->addr = fromAddr;
-				dg->port = fromPort;
+				dg->addr = dataAddr;
+				dg->port = dataPort;
 				dg->buf = data;
 				return true;
 			}
 			else
-				printf("Warning: server responded with what doesn't seem to be a STUN or data packet, skipping.\n");
+			{
+				if(debugLevel >= IceTransport::DL_Packet)
+					emit q->debugLine("Warning: server responded with what doesn't seem to be a STUN or data packet, skipping.");
+			}
 		}
 
 		return false;
@@ -448,6 +447,9 @@ private:
 private slots:
 	void postStart()
 	{
+		if(stopping)
+			return;
+
 		if(extSock)
 		{
 			sock = new SafeUdpSocket(extSock, this);
@@ -477,7 +479,7 @@ private slots:
 
 	void sock_readyRead()
 	{
-		ObjectSessionWatcher watcher(&sess);
+		ObjectSessionWatcher watch(&sess);
 
 		QList<Datagram> dreads;
 		QList<Datagram> rreads;
@@ -490,9 +492,16 @@ private slots:
 			Datagram dg;
 
 			QByteArray buf = sock->readDatagram(&from, &fromPort);
-			if(from == stunAddr && fromPort == stunPort)
+			if((from == stunBindAddr && fromPort == stunBindPort) || (from == stunRelayAddr && fromPort == stunRelayPort))
 			{
-				if(processIncomingStun(buf, &dg))
+				bool haveData = processIncomingStun(buf, from, fromPort, &dg);
+
+				// processIncomingStun could cause signals to
+				//   emit.  for example, stopped()
+				if(!watch.isValid())
+					return;
+
+				if(haveData)
 					rreads += dg;
 			}
 			else
@@ -508,7 +517,7 @@ private slots:
 		{
 			in += dreads;
 			emit q->readyRead(Direct);
-			if(!watcher.isValid())
+			if(!watch.isValid())
 				return;
 		}
 
@@ -583,17 +592,13 @@ private slots:
 
 	void pool_outgoingMessage(const QByteArray &packet, const QHostAddress &toAddress, int toPort)
 	{
-		// we aren't using IP-associated transactions
-		Q_UNUSED(toAddress);
-		Q_UNUSED(toPort);
-
 		// warning: read StunTransactionPool docs before modifying
 		//   this function
 
 		WriteItem wi;
 		wi.type = WriteItem::Pool;
 		pendingWrites += wi;
-		sock->writeDatagram(packet, stunAddr, stunPort);
+		sock->writeDatagram(packet, toAddress, toPort);
 	}
 
 	void pool_needAuthParams()
@@ -603,6 +608,11 @@ private slots:
 		//   prompting just continue on as if we had a blank
 		//   user/pass
 		pool->continueAfterParams();
+	}
+
+	void pool_debugLine(const QString &line)
+	{
+		emit q->debugLine(line);
 	}
 
 	void binding_success()
@@ -623,23 +633,27 @@ private slots:
 		delete stunBinding;
 		stunBinding = 0;
 
+		// don't report any error
 		//if(stunType == IceLocalTransport::Basic || (stunType == IceLocalTransport::Auto && !turn))
 		//	emit q->addressesChanged();
 	}
 
 	void turn_connected()
 	{
-		printf("turn_connected\n");
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine("turn_connected");
 	}
 
 	void turn_tlsHandshaken()
 	{
-		printf("turn_tlsHandshaken\n");
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine("turn_tlsHandshaken");
 	}
 
 	void turn_closed()
 	{
-		printf("turn_closed\n");
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine("turn_closed");
 
 		delete turn;
 		turn = 0;
@@ -654,11 +668,13 @@ private slots:
 
 		refAddr = allocate->reflexiveAddress();
 		refPort = allocate->reflexivePort();
-		printf("Server says we are %s;%d\n", qPrintable(refAddr.toString()), refPort);
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine(QString("Server says we are ") + refAddr.toString() + ';' + QString::number(refPort));
 
 		relAddr = allocate->relayedAddress();
 		relPort = allocate->relayedPort();
-		printf("Server relays via %s;%d\n", qPrintable(relAddr.toString()), relPort);
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine(QString("Server relays via ") + relAddr.toString() + ';' + QString::number(relPort));
 
 		turnActivated = true;
 
@@ -672,7 +688,8 @@ private slots:
 
 	void turn_error(XMPP::TurnClient::Error e)
 	{
-		printf("turn_error: %s\n", qPrintable(turn->errorString()));
+		if(debugLevel >= IceTransport::DL_Info)
+			emit q->debugLine(QString("turn_error: ") + turn->errorString());
 
 		delete turn;
 		turn = 0;
@@ -690,6 +707,7 @@ private slots:
 		if(wasActivated)
 			return;
 
+		// don't report any error
 		//if(stunType == IceLocalTransport::Relay || (stunType == IceLocalTransport::Auto && !stunBinding))
 		//	emit q->addressesChanged();
 	}
@@ -699,12 +717,12 @@ private slots:
 		WriteItem wi;
 		wi.type = WriteItem::Turn;
 		pendingWrites += wi;
-		sock->writeDatagram(buf, stunAddr, stunPort);
+		sock->writeDatagram(buf, stunRelayAddr, stunRelayPort);
 	}
 
 	void turn_debugLine(const QString &line)
 	{
-		printf("turn_debugLine: %s\n", qPrintable(line));
+		emit q->debugLine(line);
 	}
 };
 
@@ -741,20 +759,17 @@ void IceLocalTransport::stop()
 	d->stop();
 }
 
-void IceLocalTransport::setStunService(const QHostAddress &addr, int port, StunServiceType type)
+void IceLocalTransport::setStunBindService(const QHostAddress &addr, int port)
 {
-	d->stunAddr = addr;
-	d->stunPort = port;
-	d->stunType = type;
+	d->stunBindAddr = addr;
+	d->stunBindPort = port;
 }
 
-void IceLocalTransport::setStunUsername(const QString &user)
+void IceLocalTransport::setStunRelayService(const QHostAddress &addr, int port, const QString &user, const QCA::SecureArray &pass)
 {
+	d->stunRelayAddr = addr;
+	d->stunRelayPort = port;
 	d->stunUser = user;
-}
-
-void IceLocalTransport::setStunPassword(const QCA::SecureArray &pass)
-{
 	d->stunPass = pass;
 }
 
@@ -851,6 +866,15 @@ void IceLocalTransport::writeDatagram(int path, const QByteArray &buf, const QHo
 	}
 	else
 		Q_ASSERT(0);
+}
+
+void IceLocalTransport::setDebugLevel(DebugLevel level)
+{
+	d->debugLevel = level;
+	if(d->pool)
+		d->pool->setDebugLevel((StunTransactionPool::DebugLevel)level);
+	if(d->turn)
+		d->turn->setDebugLevel((TurnClient::DebugLevel)level);
 }
 
 }

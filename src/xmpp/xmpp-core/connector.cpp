@@ -426,6 +426,9 @@ int AdvancedConnector::errorCode() const
 
 void AdvancedConnector::do_resolve()
 {
+#ifdef XMPP_DEBUG
+	printf("resolving [%s]\n", qPrintable(d->host));
+#endif
 	d->dns.resolve(d->host);
 }
 
@@ -503,7 +506,7 @@ void AdvancedConnector::do_connect()
 	d->connectTimeout.start(5000);
 
 #ifdef XMPP_DEBUG
-	printf("trying %s:%d\n", d->host.latin1(), d->port);
+	printf("trying %s:%d\n", qPrintable(d->host), d->port);
 #endif
 	int t = d->proxy.type();
 	if(t == Proxy::None) {

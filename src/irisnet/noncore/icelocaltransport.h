@@ -48,13 +48,6 @@ public:
 		ErrorBind = ErrorCustom
 	};
 
-	enum StunServiceType
-	{
-		Auto,
-		Basic,
-		Relay
-	};
-
 	IceLocalTransport(QObject *parent = 0);
 	~IceLocalTransport();
 
@@ -68,9 +61,8 @@ public:
 	//   retries
 	void start(const QHostAddress &addr);
 
-	void setStunService(const QHostAddress &addr, int port, StunServiceType type = Auto);
-	void setStunUsername(const QString &user);
-	void setStunPassword(const QCA::SecureArray &pass);
+	void setStunBindService(const QHostAddress &addr, int port);
+	void setStunRelayService(const QHostAddress &addr, int port, const QString &user, const QCA::SecureArray &pass);
 
 	// obtain relay / reflexive
 	void stunStart();
@@ -84,13 +76,13 @@ public:
 	QHostAddress relayedAddress() const;
 	int relayedPort() const;
 
-	void addChannelPeer(const QHostAddress &addr, int port);
-
 	// reimplemented
 	virtual void stop();
 	virtual bool hasPendingDatagrams(int path) const;
 	virtual QByteArray readDatagram(int path, QHostAddress *addr, int *port);
 	virtual void writeDatagram(int path, const QByteArray &buf, const QHostAddress &addr, int port);
+	virtual void addChannelPeer(const QHostAddress &addr, int port);
+	virtual void setDebugLevel(DebugLevel level);
 
 signals:
 	// may be emitted multiple times.

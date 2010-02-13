@@ -80,6 +80,7 @@ public:
 	void setClientSoftwareNameAndVersion(const QString &str);
 
 	void start();
+	void start(const QHostAddress &addr, int port); // use addr association
 	void stop();
 
 	QString serverSoftwareNameAndVersion() const;
@@ -117,6 +118,9 @@ signals:
 
 	// emitted after calling setChannels()
 	void channelsChanged();
+
+	// not DOR-SS/DS safe
+	void debugLine(const QString &line);
 
 private:
 	Q_DISABLE_COPY(StunAllocate)
