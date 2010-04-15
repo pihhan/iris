@@ -1,6 +1,5 @@
 /*
- * simplesasl.h - Simple SASL implementation
- * Copyright (C) 2003  Justin Karneges
+ * Copyright (C) 2010  Barracuda Networks, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -8,29 +7,28 @@
  * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * but WITHANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301  USA
  *
  */
 
-#ifndef SIMPLESASL_H
-#define SIMPLESASL_H
+#include "icetransport.h"
 
-namespace QCA {
-	class Provider;
-}
+namespace XMPP {
 
-namespace XMPP
+IceTransport::IceTransport(QObject *parent) :
+	QObject(parent)
 {
-        /** @brief Create simplified SASL provider for QCA.
-            Does not support all features, use this only if 
-            full features SASL is unavailable. */
-	QCA::Provider* createProviderSimpleSASL();
 }
 
-#endif
+IceTransport::~IceTransport()
+{
+}
+
+}

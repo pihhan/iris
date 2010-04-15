@@ -28,6 +28,8 @@
 #include "xmpp_agentitem.h"
 
 namespace XMPP {
+
+        /** \brief One item in disco#items reply, with its identities and features. */
 	class DiscoItem
 	{
 	public:

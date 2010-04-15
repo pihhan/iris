@@ -377,6 +377,7 @@ JT_Roster::~JT_Roster()
 	delete d;
 }
 
+/** @brief Request roster from server. */
 void JT_Roster::get()
 {
 	type = 0;
@@ -387,6 +388,11 @@ void JT_Roster::get()
 	iq.appendChild(query);
 }
 
+/** @brief Push new contact to my roster.
+    @param jid JabberId of contact we are adding.
+    @param name Nickname user set for new contact. If not specified, empty.
+    @param groups List of group names new contact will be member in. 
+*/
 void JT_Roster::set(const Jid &jid, const QString &name, const QStringList &groups)
 {
 	type = 1;
@@ -400,6 +406,8 @@ void JT_Roster::set(const Jid &jid, const QString &name, const QStringList &grou
 	d->itemList += item;
 }
 
+/** @brief Request deleting user from roster. 
+    @param jid Jid of contact we are to remove. He should exist in roster. */
 void JT_Roster::remove(const Jid &jid)
 {
 	type = 1;
@@ -467,6 +475,7 @@ bool JT_Roster::fromString(const QString &str)
 	return true;
 }
 
+/** @brief Parse incoming XML stanza and apply changes to roster. */
 bool JT_Roster::take(const QDomElement &x)
 {
 	if(!iqVerify(x, client()->host(), id()))
@@ -545,6 +554,7 @@ JT_Presence::~JT_Presence()
 {
 }
 
+/** \brief Construct presence stanza from given Status class */
 void JT_Presence::pres(const Status &s)
 {
 	type = 0;
@@ -584,6 +594,8 @@ void JT_Presence::pres(const Status &s)
 			c.setAttribute("ver",s.capsVersion());
 			if (!s.capsExt().isEmpty()) 
 				c.setAttribute("ext",s.capsExt());
+                        if (!s.capsHash().isEmpty())
+                                c.setAttribute("hash", s.capsHash());
 			tag.appendChild(c);
 		}
 
@@ -615,6 +627,13 @@ void JT_Presence::pres(const Status &s)
 	}
 }
 
+/** \brief Construct XML tree of presence stanza with destination jid.
+    \param to Target jid where to send presence.
+    \param s Status class to represent as XML subtree.
+    Usually presence from client is sent without destination. XMPP will forward 
+    presence stanza to all subscribed receivers. This will send presence only
+    to specified JID, often called as custom status feature. Useful also for
+    login or logout from gateway without changing global status. */
 void JT_Presence::pres(const Jid &to, const Status &s)
 {
 	pres(s);
@@ -663,6 +682,9 @@ JT_PushPresence::~JT_PushPresence()
 {
 }
 
+/** \brief Parse incoming presence stanza into Status structure.
+    \return true if stanza was presence stanza, false otherwise. 
+    */
 bool JT_PushPresence::take(const QDomElement &e)
 {
 	if(e.tagName() != "presence")
@@ -749,6 +771,7 @@ bool JT_PushPresence::take(const QDomElement &e)
  			p.setCapsNode(i.attribute("node"));
  			p.setCapsVersion(i.attribute("ver"));
  			p.setCapsExt(i.attribute("ext"));
+                        p.setCapsHash(i.attribute("hash"));
   		}
 		else if(i.tagName() == "x" && i.attribute("xmlns") == "vcard-temp:x:update") {
 			QDomElement t;
@@ -895,6 +918,10 @@ JT_GetServices::JT_GetServices(Task *parent)
 {
 }
 
+/** @brief Create legacy request to list services using jabber:iq:agents.
+    @param j Jid of server you want agents from.
+    Note: This is obsolete method for listing services, you should use Disco method, see XEP-70.
+*/
 void JT_GetServices::get(const Jid &j)
 {
 	agentList.clear();
@@ -916,6 +943,9 @@ void JT_GetServices::onGo()
 	send(iq);
 }
 
+/** @brief Parse reply with list of services.
+    @return false if something was not correct, true if reply had correct format.
+*/
 bool JT_GetServices::take(const QDomElement &x)
 {
 	if(!iqVerify(x, jid, id()))
@@ -999,6 +1029,8 @@ JT_VCard::~JT_VCard()
 	delete d;
 }
 
+/** @brief Request vCard of contact.
+    @param _jid JabberId we want details about. Can be bare JID or domain part, full JID is not expected. */
 void JT_VCard::get(const Jid &_jid)
 {
 	type = 0;
@@ -1006,8 +1038,6 @@ void JT_VCard::get(const Jid &_jid)
 	d->iq = createIQ(doc(), "get", type == 1 ? Jid().full() : d->jid.full(), id());
 	QDomElement v = doc()->createElement("vCard");
 	v.setAttribute("xmlns", "vcard-temp");
-	v.setAttribute("version", "2.0");
-	v.setAttribute("prodid", "-//HandGen//NONSGML vGen v1.0//EN");
 	d->iq.appendChild(v);
 }
 
@@ -1021,6 +1051,7 @@ const VCard & JT_VCard::vcard() const
 	return d->vcard;
 }
 
+/** @brief Replace our vCard with one specified here. */
 void JT_VCard::set(const VCard &card)
 {
 	type = 1;
@@ -1030,6 +1061,9 @@ void JT_VCard::set(const VCard &card)
 	d->iq.appendChild(card.toXml(doc()) );
 }
 
+/** @brief Replace vCard of j with one specified here.
+    @param j JID which vCard is to be upgraded.
+    @param card New data to be published. */
 void JT_VCard::set(const Jid &j, const VCard &card)
 {
 	type = 1;
@@ -1039,6 +1073,7 @@ void JT_VCard::set(const Jid &j, const VCard &card)
 	d->iq.appendChild(card.toXml(doc()) );
 }
 
+/** @brief Send created request. */
 void JT_VCard::onGo()
 {
 	send(d->iq);
@@ -1098,6 +1133,7 @@ public:
 	QList<SearchResult> resultList;
 };
 
+/** @brief Create search request. */
 JT_Search::JT_Search(Task *parent)
 :Task(parent)
 {
@@ -1110,6 +1146,8 @@ JT_Search::~JT_Search()
 	delete d;
 }
 
+/** @brief Request search form and parameters from specified jid. 
+    @param jid JID of search service. */
 void JT_Search::get(const Jid &jid)
 {
 	type = 0;
@@ -1122,6 +1160,8 @@ void JT_Search::get(const Jid &jid)
 	iq.appendChild(query);
 }
 
+/** @brief Send filled form back to jid in form.
+    @param form Filled parameters of search. */
 void JT_Search::set(const Form &form)
 {
 	type = 1;
@@ -1144,6 +1184,9 @@ void JT_Search::set(const Form &form)
 	}
 }
 
+/** @brief Send filled form back to specified jid.
+    @param jid JID of search service we send parameters to.
+    @param form Filled parameters of search. */
 void JT_Search::set(const Jid &jid, const XData &form)
 {
 	type = 1;
@@ -1162,11 +1205,15 @@ const Form & JT_Search::form() const
 	return d->form;
 }
 
+/** @brief Get list of results. */
 const QList<SearchResult> & JT_Search::results() const
 {
 	return d->resultList;
 }
 
+/** @brief Ask if reply contains XData form or simple XML reply.
+    @return true if result has format of XData form, false if XData is not present.
+    */
 bool JT_Search::hasXData() const
 {
 	return d->hasXData;
@@ -1182,6 +1229,8 @@ void JT_Search::onGo()
 	send(iq);
 }
 
+/** @brief Parse reply.
+    @return true if reply is correct, false if it is not. */
 bool JT_Search::take(const QDomElement &x)
 {
 	if(!iqVerify(x, d->jid, id()))
@@ -1385,6 +1434,7 @@ bool JT_ClientTime::take(const QDomElement &x)
 //----------------------------------------------------------------------------
 // JT_ServInfo
 //----------------------------------------------------------------------------
+/** @brief Create request to list features and version of JID. */
 JT_ServInfo::JT_ServInfo(Task *parent)
 :Task(parent)
 {

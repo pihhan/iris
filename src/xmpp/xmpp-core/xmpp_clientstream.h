@@ -37,6 +37,7 @@ namespace XMPP
 	class TLSHandler;
 	class Connector;
 
+        /** \brief Class for connecting to XMPP server, handles basic network parameters and stream security. */
 	class ClientStream : public Stream
 	{
 		Q_OBJECT
@@ -91,6 +92,8 @@ namespace XMPP
 			AllowPlainOverTLS
 		};
 
+                /** \brief Create client stream using connector.
+                    \param conn might be simple Connector or AdvancedConnection with proxy connection support. */
 		ClientStream(Connector *conn, TLSHandler *tlsHandler=0, QObject *parent=0);
 		ClientStream(const QString &host, const QString &defRealm, ByteStream *bs, QCA::TLS *tls=0, QObject *parent=0); // server
 		~ClientStream();
@@ -116,10 +119,14 @@ namespace XMPP
 		void setResourceBinding(bool);
 
 		// Language
+                /** \brief Configure xml:lang parameter passed to server on connection. */
 		void setLang(const QString&);
 
 		// security options (old protocol only uses the first !)
 		void setAllowPlain(AllowPlainType);
+                /** \brief Require both parties to prove their identity. Do not set this to true
+                    when using internal simpleSASL provider, it does not support such operation.
+                    */
 		void setRequireMutualAuth(bool);
 		void setSSFRange(int low, int high);
 		void setOldOnly(bool);
@@ -151,12 +158,16 @@ namespace XMPP
 		QStringList hosts() const;
 
 	signals:
+                /** \brief Fired after you have connected to server, before you authenticate or bind. */
 		void connected();
 		void securityLayerActivated(int);
 		void needAuthParams(bool user, bool pass, bool realm);
+                /** \brief Signal is emmited after you are successfuly authenticated */
 		void authenticated();
 		void warning(int);
+                /** \brief Incoming XML data as text string, useful for debugging output. */
 		void incomingXml(const QString &s);
+                /** \brief Outgoing XML data as text string, useful for debugging output. */
 		void outgoingXml(const QString &s);
 
 	public slots:

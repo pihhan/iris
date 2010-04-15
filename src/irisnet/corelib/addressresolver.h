@@ -1,6 +1,5 @@
 /*
- * simplesasl.h - Simple SASL implementation
- * Copyright (C) 2003  Justin Karneges
+ * Copyright (C) 2010  Barracuda Networks, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,19 +17,41 @@
  *
  */
 
-#ifndef SIMPLESASL_H
-#define SIMPLESASL_H
+#ifndef ADDRESSRESOLVER_H
+#define ADDRESSRESOLVER_H
 
-namespace QCA {
-	class Provider;
-}
+#include <QObject>
+#include <QHostAddress>
 
-namespace XMPP
+namespace XMPP {
+
+// resolve both AAAA and A for a hostname
+class AddressResolver : public QObject
 {
-        /** @brief Create simplified SASL provider for QCA.
-            Does not support all features, use this only if 
-            full features SASL is unavailable. */
-	QCA::Provider* createProviderSimpleSASL();
+	Q_OBJECT
+
+public:
+	enum Error
+	{
+		ErrorGeneric
+	};
+
+	AddressResolver(QObject *parent = 0);
+	~AddressResolver();
+
+	void start(const QByteArray &hostName);
+	void stop();
+
+signals:
+	void resultsReady(const QList<QHostAddress> &results);
+	void error(XMPP::AddressResolver::Error e);
+
+private:
+	class Private;
+	friend class Private;
+	Private *d;
+};
+
 }
 
 #endif

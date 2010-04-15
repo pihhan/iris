@@ -23,6 +23,7 @@
 //#include <idna.h>
 #include "irisnetplugin.h"
 #include "irisnetglobal_p.h"
+#include "addressresolver.h"
 
 namespace XMPP {
 
@@ -234,6 +235,99 @@ void NameRecord::setNull(const QByteArray &rawData)
 	d->rawData = rawData;
 }
 
+QDebug operator<<(QDebug dbg, XMPP::NameRecord::Type type)
+{
+	dbg.nospace() << "XMPP::NameRecord::";
+
+	switch(type)
+	{
+		case XMPP::NameRecord::A:
+			dbg.nospace() << "A";
+			break;
+		case XMPP::NameRecord::Aaaa:
+			dbg.nospace() << "Aaaa";
+			break;
+		case XMPP::NameRecord::Mx:
+			dbg.nospace() << "Mx";
+			break;
+		case XMPP::NameRecord::Srv:
+			dbg.nospace() << "Srv";
+			break;
+		case XMPP::NameRecord::Cname:
+			dbg.nospace() << "Cname";
+			break;
+		case XMPP::NameRecord::Ptr:
+			dbg.nospace() << "Ptr";
+			break;
+		case XMPP::NameRecord::Txt:
+			dbg.nospace() << "Txt";
+			break;
+		case XMPP::NameRecord::Hinfo:
+			dbg.nospace() << "Hinfo";
+			break;
+		case XMPP::NameRecord::Ns:
+			dbg.nospace() << "Ns";
+			break;
+		case XMPP::NameRecord::Null:
+			dbg.nospace() << "Null";
+			break;
+		case XMPP::NameRecord::Any:
+			dbg.nospace() << "Any";
+			break;
+	}
+
+	return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const XMPP::NameRecord &record)
+{
+	dbg.nospace() << "XMPP::NameRecord("
+		<< "owner=" << record.owner()
+		<< ", ttl=" << record.ttl()
+		<< ", type=" << record.type();
+
+	switch(record.type())
+	{
+		case XMPP::NameRecord::A:
+		case XMPP::NameRecord::Aaaa:
+			dbg.nospace() << ", address=" << record.address();
+			break;
+		case XMPP::NameRecord::Mx:
+			dbg.nospace()
+				<< ", name=" << record.name()
+				<< ", priority=" << record.priority();
+			break;
+		case XMPP::NameRecord::Srv:
+			dbg.nospace()
+				<< ", name=" << record.name()
+				<< ", port=" << record.port()
+				<< ", priority=" << record.priority()
+				<< ", weight=" << record.weight();
+			break;
+		case XMPP::NameRecord::Cname:
+		case XMPP::NameRecord::Ptr:
+		case XMPP::NameRecord::Ns:
+			dbg.nospace() << ", name=" << record.name();
+			break;
+		case XMPP::NameRecord::Txt:
+			dbg.nospace() << ", texts={" << record.texts() << "}";
+			break;
+		case XMPP::NameRecord::Hinfo:
+			dbg.nospace() << ", cpu=" << record.cpu() << ", os=" << record.os();
+			break;
+		case XMPP::NameRecord::Null:
+			dbg.nospace() << ", size=" << record.rawData().size();
+			break;
+		case XMPP::NameRecord::Any:
+			// can't happen
+			Q_ASSERT(0);
+			break;
+	}
+
+	dbg.nospace() << ")";
+	return dbg;
+}
+
 //----------------------------------------------------------------------------
 // ServiceInstance
 //----------------------------------------------------------------------------
@@ -347,6 +441,7 @@ public:
 
 	int mode;
 	NameResolver dns;
+	AddressResolver adns;
 	int port;
 
 	class Server
@@ -366,6 +461,8 @@ public:
 		mode = 3;
 		connect(&dns, SIGNAL(resultsReady(const QList<XMPP::NameRecord> &)), SLOT(dns_resultsReady(const QList<XMPP::NameRecord> &)));
 		connect(&dns, SIGNAL(error(XMPP::NameResolver::Error)), SLOT(dns_error(XMPP::NameResolver::Error)));
+		connect(&adns, SIGNAL(resultsReady(const QList<QHostAddress> &)), SLOT(adns_resultsReady(const QList<QHostAddress> &)));
+		connect(&adns, SIGNAL(error(XMPP::AddressResolver::Error)), SLOT(adns_error(XMPP::AddressResolver::Error)));
 	}
 
 	void tryNext()
@@ -391,7 +488,7 @@ public:
 
 			Server serv = servers.takeFirst();
 			port = serv.port;
-			dns.start(serv.host, NameRecord::A); // TODO: ipv6!
+			adns.start(serv.host);
 		}
 		else
 		{
@@ -409,43 +506,43 @@ public:
 private slots:
 	void dns_resultsReady(const QList<XMPP::NameRecord> &results)
 	{
-		if(mode == 0)
+		mode = 2;
+		servers.clear();
+		for(int n = 0; n < results.count(); ++n)
 		{
-			mode = 2;
-			servers.clear();
-			for(int n = 0; n < results.count(); ++n)
-			{
-				Server serv;
-				serv.host = results[n].name();
-				serv.port = results[n].port();
-				serv.priority = results[n].priority();
-				serv.weight = results[n].weight();
-				servers += serv;
-			}
-			tryNext();
+			Server serv;
+			serv.host = results[n].name();
+			serv.port = results[n].port();
+			serv.priority = results[n].priority();
+			serv.weight = results[n].weight();
+			servers += serv;
 		}
-		else if(mode == 1)
+		tryNext();
+	}
+
+	void dns_error(XMPP::NameResolver::Error)
+	{
+		if(mode == 0 || mode == 1)
+			emit q->error();
+		else
+			tryNext(); // FIXME: probably shouldn't share this
+	}
+
+	void adns_resultsReady(const QList<QHostAddress> &results)
+	{
+		if(mode == 1)
 		{
-			addrs.clear();
-
-			// TODO: don't forget about ipv6
-			for(int n = 0; n < results.count(); ++n)
-				addrs += results[n].address();
-
+			addrs = results;
 			tryNext();
 		}
 		else
 		{
-			QList<QHostAddress> tmp;
-			for(int n = 0; n < results.count(); ++n)
-				tmp += results[n].address();
-
-			addrs += tmp;
+			addrs += results;
 			tryNext();
 		}
 	}
 
-	void dns_error(XMPP::NameResolver::Error)
+	void adns_error(XMPP::AddressResolver::Error)
 	{
 		if(mode == 0 || mode == 1)
 			emit q->error();
@@ -663,15 +760,6 @@ public:
 private slots:
 	void provider_resolve_resultsReady(int id, const QList<XMPP::NameRecord> &results)
 	{
-		// is it a sub-request?
-		if(res_sub_instances.contains(id))
-		{
-			int par_id = res_sub_instances.value(id);
-			res_sub_instances.remove(id);
-			p_net->resolve_localResultsReady(par_id, results);
-			return;
-		}
-
 		NameResolver::Private *np = res_instances.value(id);
 		NameResolver *q = np->q; // resolve_cleanup deletes np
 		if(!np->longLived)
@@ -681,19 +769,26 @@ private slots:
 
 	void provider_resolve_error(int id, XMPP::NameResolver::Error e)
 	{
-		// is it a sub-request?
-		if(res_sub_instances.contains(id))
-		{
-			int par_id = res_sub_instances.value(id);
-			res_sub_instances.remove(id);
-			p_net->resolve_localError(par_id, e);
-			return;
-		}
-
 		NameResolver::Private *np = res_instances.value(id);
 		NameResolver *q = np->q; // resolve_cleanup deletes np
 		resolve_cleanup(np);
 		emit q->error(e);
+	}
+
+	void provider_local_resolve_resultsReady(int id, const QList<XMPP::NameRecord> &results)
+	{
+		int par_id = res_sub_instances.value(id);
+		NameResolver::Private *np = res_instances.value(par_id);
+		if(!np->longLived)
+			res_sub_instances.remove(id);
+		p_net->resolve_localResultsReady(par_id, results);
+	}
+
+	void provider_local_resolve_error(int id, XMPP::NameResolver::Error e)
+	{
+		int par_id = res_sub_instances.value(id);
+		res_sub_instances.remove(id);
+		p_net->resolve_localError(par_id, e);
 	}
 
 	void provider_resolve_useLocal(int id, const QByteArray &name)
@@ -717,13 +812,13 @@ private slots:
 			// use queued connections
 			qRegisterMetaType< QList<XMPP::NameRecord> >("QList<XMPP::NameRecord>");
 			qRegisterMetaType<XMPP::NameResolver::Error>("XMPP::NameResolver::Error");
-			connect(p_local, SIGNAL(resolve_resultsReady(int, const QList<XMPP::NameRecord> &)), SLOT(provider_resolve_resultsReady(int, const QList<XMPP::NameRecord> &)), Qt::QueuedConnection);
-			connect(p_local, SIGNAL(resolve_error(int, XMPP::NameResolver::Error)), SLOT(provider_resolve_error(int, XMPP::NameResolver::Error)), Qt::QueuedConnection);
+			connect(p_local, SIGNAL(resolve_resultsReady(int, const QList<XMPP::NameRecord> &)), SLOT(provider_local_resolve_resultsReady(int, const QList<XMPP::NameRecord> &)), Qt::QueuedConnection);
+			connect(p_local, SIGNAL(resolve_error(int, XMPP::NameResolver::Error)), SLOT(provider_local_resolve_error(int, XMPP::NameResolver::Error)), Qt::QueuedConnection);
 		}
 
 		NameResolver::Private *np = res_instances.value(id);
 
-		// transfer to local only
+		/*// transfer to local only
 		if(np->longLived)
 		{
 			res_instances.remove(np->id);
@@ -737,7 +832,10 @@ private slots:
 			int req_id = p_local->resolve_start(name, np->type, false);
 
 			res_sub_instances.insert(req_id, np->id);
-		}
+		}*/
+
+		int req_id = p_local->resolve_start(name, np->type, np->longLived);
+		res_sub_instances.insert(req_id, np->id);
 	}
 
 	void provider_browse_instanceAvailable(int id, const XMPP::ServiceInstance &i)
@@ -846,6 +944,32 @@ void NameResolver::stop()
 	}
 }
 
+QDebug operator<<(QDebug dbg, XMPP::NameResolver::Error e)
+{
+	dbg.nospace() << "XMPP::NameResolver::";
+
+	switch(e)
+	{
+		case XMPP::NameResolver::ErrorGeneric:
+			dbg.nospace() << "ErrorGeneric";
+			break;
+		case XMPP::NameResolver::ErrorNoName:
+			dbg.nospace() << "ErrorNoName";
+			break;
+		case XMPP::NameResolver::ErrorTimeout:
+			dbg.nospace() << "ErrorTimeout";
+			break;
+		case XMPP::NameResolver::ErrorNoLocal:
+			dbg.nospace() << "ErrorNoLocal";
+			break;
+		case XMPP::NameResolver::ErrorNoLongLived:
+			dbg.nospace() << "ErrorNoLongLived";
+			break;
+	}
+
+	return dbg;
+}
+
 //----------------------------------------------------------------------------
 // ServiceBrowser
 //----------------------------------------------------------------------------
@@ -899,7 +1023,7 @@ void ServiceResolver::startFromPlain(const QString &host, int port)
 {
 	d->mode = 1;
 	d->port = port;
-	d->dns.start(host.toLatin1(), NameRecord::A); // TODO: try Aaaa first, fallback to A
+	d->adns.start(host.toLatin1());
 }
 
 void ServiceResolver::tryNext()

@@ -23,6 +23,7 @@
 #include "xmpp_task.h"
 #include "xmpp_client.h"
 #include "xmpp_xmlcommon.h"
+#include "xmpp_stanza.h"
 
 using namespace XMPP;
 
@@ -38,8 +39,10 @@ public:
 	Client *client;
 	bool insig, deleteme, autoDelete;
 	bool done;
+        Stanza::Error *error;
 };
 
+/*! \brief Create Task from rootTask */
 Task::Task(Task *parent)
 :QObject(parent)
 {
@@ -61,6 +64,8 @@ Task::Task(Client *parent, bool)
 
 Task::~Task()
 {
+        if (d->error)
+            delete d->error;
 	delete d;
 }
 
@@ -72,6 +77,7 @@ void Task::init()
 	d->deleteme = false;
 	d->autoDelete = false;
 	d->done = false;
+        d->error = NULL;
 }
 
 Task *Task::parent() const
@@ -124,6 +130,11 @@ void Task::go(bool autoDelete)
 	}
 }
 
+/*! \brief Iterates on list of all tasks, and try if one of them would accept
+    and process element.
+    \param x XML stanza to process.
+    \return True if stanza was handled by this Task, false if not.
+*/
 bool Task::take(const QDomElement &x)
 {
 	const QObjectList p = children();
@@ -143,6 +154,8 @@ bool Task::take(const QDomElement &x)
 	return false;
 }
 
+/*! \brief Schedule this Task to be deleted, after it exits all functions.
+    Can be called more than once, will be deleted only one time. */
 void Task::safeDelete()
 {
 	if(d->deleteme)
@@ -153,10 +166,15 @@ void Task::safeDelete()
 		SafeDelete::deleteSingle(this);
 }
 
+/*! \brief Reimplement this method to create and send stanza over network. 
+    Usually first call some methods to configure destination and parameters,
+    then using go() it will run this method to dispatch. */
 void Task::onGo()
 {
 }
 
+/*! \brief Reimplement if you need to be notified, if client disconnected
+    before delivering stanza. */
 void Task::onDisconnect()
 {
 	if(!d->done) {
@@ -169,11 +187,14 @@ void Task::onDisconnect()
 	}
 }
 
+/*! \brief Send stanza using configured client. */
 void Task::send(const QDomElement &x)
 {
 	client()->send(x);
 }
 
+/*! \brief Call this method to mark result as success.
+    Usually will be called from take(), when reply is what we expected. */
 void Task::setSuccess(int code, const QString &str)
 {
 	if(!d->done) {
@@ -184,11 +205,16 @@ void Task::setSuccess(int code, const QString &str)
 	}
 }
 
+/*! \brief Call this method to mark result of task as failed.
+    \param e XML stanza to create error message from.
+    Usually will be called from take(), when reply did not bring data
+    we requested for whatever reason. */
 void Task::setError(const QDomElement &e)
 {
 	if(!d->done) {
 		d->success = false;
 		getErrorFromElement(e, d->client->streamBaseNS(), &d->statusCode, &d->statusString);
+                d->error = getStanzaErrorFromElement(e, d->client->streamBaseNS());
 		done();
 	}
 }
@@ -203,6 +229,9 @@ void Task::setError(int code, const QString &str)
 	}
 }
 
+/*! \brief Mark task finished, emit finished signal.
+    If task is marked autodelete, schedule deletion of task.
+*/
 void Task::done()
 {
 	if(d->done || d->insig)
@@ -242,17 +271,17 @@ void Task::debug(const QString &str)
 
 
 /**
- * \brief verifiys a stanza is a IQ reply for this task
+ * \brief verifies a stanza is a IQ reply for this task
  *
- * it checks that the stanze is form the jid the request was send to and the id and the namespace (if given) match.
+ * it checks that the stanze is from the jid the request was send to and the id and the namespace (if given) match.
  *
  * it further checks that the sender jid is not empty (except if \a to is our server), it's not from
  * our bare jid (except if send to one of our resources or our server)
  * \param x the stanza to test
- * \param to the Jid this task send a IQ to
- * \param id the id of the send IQ
+ * \param to the Jid this task sent an IQ to, and who should return reply
+ * \param id the id of the sent IQ
  * \param xmlns the expected namespace if the reply (if non empty)
- * \return true if it's a valid reply
+ * \return true if this is our reply, false otherwise.
 */
 
 bool Task::iqVerify(const QDomElement &x, const Jid &to, const QString &id, const QString &xmlns)
@@ -294,4 +323,43 @@ bool Task::iqVerify(const QDomElement &x, const Jid &to, const QString &id, cons
 
 	return true;
 }
+
+// TODO: move to better place
+// xmpp_xmlcommon is candidate, but is somehow full
+Stanza::Error * Task::getStanzaErrorFromElement(const QDomElement &e, const QString &baseNs)
+{
+    bool found;
+    QDomElement tag = findSubTag(e, "error", &found);
+    if(!found)
+            return NULL;
+
+    XMPP::Stanza::Error *err = new Stanza::Error();
+    err->fromXml(tag, baseNs);
+    return err;
+}
+
+/** @brief Return type of error.
+    @return Numeric value of enum ErrorType, or 0 on undefined error.
+    @see Stanza::Error
+    It is numeric value from enum Stanza::Error::ErrorType.
+*/
+int Task::errorType() const
+{
+    if (d->error)
+        return d->error->type;
+    else return 0;
+}
+
+/** @brief Return error condition.
+    @return Numeric value of Stanza::Error::ErrorCond, or 0 on undefined error.
+    @see Stanza::Error
+*/
+int Task::errorCondition() const
+{
+    if (d->error)
+        return d->error->condition;
+    else
+        return 0;
+}
+
 

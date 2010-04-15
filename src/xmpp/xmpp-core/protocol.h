@@ -51,6 +51,7 @@ namespace XMPP
 		int major, minor;
 	};
 
+        /** \brief Representation for connection features, as supported encryption, compression or authentication mechanisms. */
 	class StreamFeatures
 	{
 	public:

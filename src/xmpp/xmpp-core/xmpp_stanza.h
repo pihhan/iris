@@ -31,6 +31,12 @@ namespace XMPP
 	class Jid;
 	class Stream;
 
+        /** \brief Class for any XML subtrees sent over XMPP connection.
+
+            Stanza is any child element under topmost <stream> element.
+            In XMPP are allowed three types: Message, Presence, IQ.
+            This class is parent for any of them, with basic routing 
+            information, as sender, receiver. */
 	class Stanza
 	{
 	public:
@@ -41,6 +47,7 @@ namespace XMPP
 		Stanza & operator=(const Stanza &from);
 		virtual ~Stanza();
 
+                /** \brief Class describing error in stanza. */
 		class Error
 		{
 		public:
@@ -71,6 +78,11 @@ namespace XMPP
 				UnexpectedRequest
 			};
 
+                        /** @brief Create new error element.
+                            @param type Type of error and suggestion how should client react.
+                            @param condition Detail about what the problem is.
+                            @param appSpec Child element for application specific errors, it will be appended to error root element. 
+                            */
 			Error(int type=Cancel, int condition=UndefinedCondition, const QString &text="", const QDomElement &appSpec=QDomElement());
 
 			int type;
@@ -93,12 +105,23 @@ namespace XMPP
 
 		bool isNull() const;
 
+                /** @brief Get XML tree representation of this stanza. */
 		QDomElement element() const;
 		QString toString() const;
 
+                /** @brief Get reference to QDomDocument element. Note that all
+                    elements are allocated under this document, you have to 
+                    create them from this document, or import them into this 
+                    document. */
 		QDomDocument & doc() const;
 		QString baseNS() const;
+                /** @brief Create element using this stanza document. */
 		QDomElement createElement(const QString &ns, const QString &tagName);
+                /** @brief Create element with namespace and contents.
+                    @param ns Namespace for new element.
+                    @param tagName Name of new element.
+                    @param text Text data inside element.
+                    */
 		QDomElement createTextElement(const QString &ns, const QString &tagName, const QString &text);
 		void appendChild(const QDomElement &e);
 
